@@ -14,6 +14,7 @@
     "build": "vite build",
     "build:admin": "npm install --prefix admin && npm run build --prefix admin",
     "build:all": "npm run build && npm run build:admin",
+    "build:vercel": "vite build && npm run build:admin && node scripts/copy-admin-to-dist.mjs",
     "start": "node server/index.js",
     "preview": "vite preview"
   },
