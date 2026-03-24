@@ -41,6 +41,34 @@ export async function getDashboardData() {
   return { leads, plans, stats };
 }
 
+export async function getPublicPlans() {
+  'use server';
+  try {
+    const { data, error } = await supabaseAdmin.from('plans').select('*').order('orden', { ascending: true });
+    if (error || !data || data.length === 0) throw new Error('No plans found');
+    
+    return data.map(row => ({
+      id: row.id,
+      nombre: row.nombre,
+      prefijo: row.prefijo,
+      precio: row.precio,
+      entrega: row.entrega,
+      desc: row.descripcion,
+      items: row.items,
+      order: row.orden,
+      destacado: row.destacado,
+    }));
+  } catch (err) {
+    console.error('Fallback plans triggered:', err.message);
+    // Hardcoded fallback data in ARS as requested
+    return [
+      { nombre: 'Básico', prefijo: 'ARS', precio: '300.000', entrega: '2 a 3 semanas', desc: 'Presencia digital impecable. Ideal para marcas y negocios.', items: ['Landing Page de alto impacto', 'Diseño UX/UI 100% responsivo', 'Formulario integrado'], destacado: false, order: 1 },
+      { nombre: 'Premium', prefijo: 'ARS', precio: '500.000', entrega: '4 a 6 semanas', desc: 'Solución corporativa completa. Pensado para pymes.', items: ['Sistema Web Multi-página', 'Panel de Administración', 'Métricas Analíticas'], destacado: true, order: 2 },
+      { nombre: 'Business', prefijo: 'Desde ARS', precio: '800.000', entrega: 'A definir', desc: 'Arquitectura a medida. Plataformas complejas y e-commerce.', items: ['Desarrollo Full-Stack a medida', 'Base de datos segura', 'Soporte 24/7'], destacado: false, order: 3 },
+    ];
+  }
+}
+
 export async function updateLeadEstado(id, estado) {
   'use server';
   const { error } = await supabaseAdmin.from('leads').update({ estado }).eq('id', id);

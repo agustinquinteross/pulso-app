@@ -6,8 +6,7 @@ import { Check, ChevronRight, Code2, Globe, Cpu, ArrowUpRight } from 'lucide-rea
 import Lenis from 'lenis';
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { getSupabase, mapPlanRow } from '@/lib/supabaseClient';
-import { submitLead } from '@/app/actions/adminData';
+import { submitLead, getPublicPlans } from '@/app/actions/adminData';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -140,16 +139,11 @@ function ContactModal({ onClose, planDefault = '' }) {
   const [planes, setPlanes] = useState(['Básico ($350)', 'Pro ($1.800)', 'Premium ($4.000+)', 'A definir']);
 
   useEffect(() => {
-    const sb = getSupabase();
-    if (!sb) return;
-    sb.from('plans')
-      .select('nombre')
-      .order('orden', { ascending: true })
-      .then(({ data, error }) => {
-        if (error) throw error;
+    getPublicPlans()
+      .then((data) => {
         if (Array.isArray(data)) setPlanes(data.map((p) => p.nombre));
       })
-      .catch((err) => console.error('Error fetching plans:', err));
+      .catch((err) => console.error('Error fetching plans for modal:', err));
   }, []);
 
   const handleChange = e => setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
@@ -251,22 +245,10 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const sb = getSupabase();
-    if (!sb) {
-      setPlanes([
-        { nombre: 'Básico', prefijo: 'USD', precio: '350', entrega: '2-3 semanas', desc: 'Presencia digital.', items: ['5 secciones', 'SEO'], order: 1 },
-        { nombre: 'Pro', prefijo: 'USD', precio: '1.800', entrega: '6-8 semanas', desc: 'App completa.', items: ['Admin panel', 'DB'], destacado: true, order: 2 },
-        { nombre: 'Premium', prefijo: 'Desde USD', precio: '4.000', entrega: 'A definir', desc: 'Escalable.', items: ['E-commerce', 'SLA'], order: 3 },
-      ]);
-      return;
-    }
-    sb.from('plans')
-      .select('*')
-      .order('orden', { ascending: true })
-      .then(({ data, error }) => {
-        if (error) throw error;
+    getPublicPlans()
+      .then((data) => {
         if (Array.isArray(data) && data.length > 0) {
-          setPlanes(data.map(mapPlanRow));
+          setPlanes(data);
         }
       })
       .catch((err) => console.error('Error fetching plans:', err));
