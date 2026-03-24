@@ -1,24 +1,41 @@
-import { createClient } from '@supabase/supabase-js';
-
-const url = import.meta.env.VITE_SUPABASE_URL;
-const anon = import.meta.env.VITE_SUPABASE_ANON_KEY;
+import { createBrowserClient } from '@supabase/ssr';
 
 export function getSupabase() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !anon) {
-    console.warn('Faltan VITE_SUPABASE_URL o VITE_SUPABASE_ANON_KEY');
+    console.warn('Faltan NEXT_PUBLIC_SUPABASE_URL o NEXT_PUBLIC_SUPABASE_ANON_KEY');
     return null;
   }
-  return createClient(url, anon, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+  return createBrowserClient(url, anon);
 }
 
-export function mapPlanRow(p) {
-  if (!p) return null;
+export function mapPlanRow(row) {
+  if (!row) return null;
   return {
-    ...p,
-    desc: p.desc ?? p.descripcion ?? '',
-    order: p.order ?? p.orden ?? 0,
-    _id: p.id,
+    id: row.id,
+    nombre: row.nombre,
+    prefijo: row.prefijo,
+    precio: row.precio,
+    entrega: row.entrega,
+    desc: row.descripcion,
+    items: row.items,
+    order: row.orden,
+    destacado: row.destacado,
+  };
+}
+
+export function mapLeadFromRpc(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    nombre: row.nombre,
+    email: row.email,
+    telefono: row.telefono,
+    plan: row.plan,
+    mensaje: row.mensaje,
+    estado: row.estado,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
