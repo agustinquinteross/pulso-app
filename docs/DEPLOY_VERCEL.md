@@ -1,31 +1,22 @@
-# Vercel + API (admin y formulario)
+# Deploy en Vercel
 
-## Qué pasaba
+## Variables de entorno (Production)
 
-1. El build de Vercel solo generaba la **landing** (`vite build`). El **admin** no se copiaba a `dist`, así que `/admin` no existía o fallaba.
-2. Sin **`VITE_API_URL`**, el admin y la landing llaman a `/api/...` en el dominio de Vercel, donde **no corre Express** → el login del admin y el formulario fallan.
+Para el modo **solo Supabase** (recomendado sin backend Node):
 
-## Qué hace el repo ahora
+| Variable | Valor |
+|----------|--------|
+| `VITE_SUPABASE_URL` | URL del proyecto (Settings → API) |
+| `VITE_SUPABASE_ANON_KEY` | Clave **anon** / publishable |
 
-- `npm run build:vercel`: construye landing + admin y copia `admin/dist` → `dist/admin`.
-- `vercel.json` usa ese comando y redirige `/admin` → `/admin/`.
+Ejecutá en Supabase el SQL: `supabase/init.sql` y luego `supabase/supabase_only.sql`, y configurá el token de admin con el `INSERT` en `app_settings` (ver `docs/SUPABASE_SOLO_VERCEL.md`).
 
-## Qué tenés que configurar en Vercel
+## Build
 
-1. **Variables de entorno** (Settings → Environment Variables), para **Production** (y Preview si querés):
+El proyecto usa `npm run build:vercel` (ver `vercel.json`): landing + panel admin copiado a `dist/admin`.
 
-   | Nombre           | Valor |
-   |-----------------|-------|
-   | `VITE_API_URL`  | URL pública de tu backend Node (ej. `https://xxxx.up.railway.app`) **sin** `/` al final |
+Tras cambiar variables, hacé **Redeploy** en Vercel.
 
-2. **Redeploy** el proyecto después de guardar las variables (el valor se “hornea” en el build).
+## Modo antiguo (API Node en Railway)
 
-## Backend
-
-El servidor debe tener en producción, como mínimo: `ADMIN_TOKEN`, variables de Supabase si las usás, Gmail si mandás mails, etc. (ver `.env.example`).
-
-## Probar
-
-- Landing: `https://tu-proyecto.vercel.app`
-- Admin: `https://tu-proyecto.vercel.app/admin/`
-- Token: el mismo `ADMIN_TOKEN` del servidor.
+Si seguís usando Express en otro host, podés mantener `VITE_API_URL` apuntando a esa API; el código actual prioriza **Supabase directo** cuando están `VITE_SUPABASE_*`.

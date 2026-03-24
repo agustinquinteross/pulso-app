@@ -1,21 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import './index.css';
+import { getSupabase, mapLeadFromRpc } from './lib/supabaseClient.js';
 
-// ─── Config ───────────────────────────────────────────────
-const API_BASE = import.meta.env.VITE_API_URL || '';
-
-// ─── API helper ───────────────────────────────────────────
-async function api(path, options = {}, token = '') {
-  const res = await fetch(`${API_BASE}/api/admin${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      'x-admin-token': token,
-      ...(options.headers || {}),
-    },
-  });
-  if (!res.ok) throw new Error((await res.json()).error || 'Error');
-  return res.json();
+// ─── Supabase (sin Node: token validado en DB vía RPC) ─────
+function requireSupabase() {
+  const s = getSupabase();
+  if (!s) {
+    throw new Error(
+      'Faltan VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY en el build (Vercel → Environment Variables).'
+    );
+  }
+  return s;
 }
 
 // ─── Formatting helpers ──────────────────────────────────
@@ -94,7 +89,13 @@ function LeadModal({ lead, token, onClose, onUpdate }) {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await api(`/leads/${lead.id}`, { method: 'PATCH', body: JSON.stringify({ estado }) }, token);
+      const s = requireSupabase();
+      const { error } = await s.rpc('admin_update_lead', {
+        p_token: token,
+        p_id: lead.id,
+        p_estado: estado,
+      });
+      if (error) throw new Error(error.message);
       onUpdate(lead.id, estado);
       onClose();
     } catch (e) {
@@ -107,7 +108,9 @@ function LeadModal({ lead, token, onClose, onUpdate }) {
   const handleDelete = async () => {
     if (!confirm(`¿Eliminar el lead de ${lead.nombre}?`)) return;
     try {
-      await api(`/leads/${lead.id}`, { method: 'DELETE' }, token);
+      const s = requireSupabase();
+      const { error } = await s.rpc('admin_delete_lead', { p_token: token, p_id: lead.id });
+      if (error) throw new Error(error.message);
       onUpdate(lead.id, null); // null = deleted
       onClose();
     } catch (e) {
@@ -247,11 +250,13 @@ function Login({ onLogin }) {
     setLoading(true);
     setError('');
     try {
-      await api('/stats', {}, token);
+      const s = requireSupabase();
+      const { data, error } = await s.rpc('admin_token_valid', { p_token: token });
+      if (error || !data) throw new Error('bad');
       localStorage.setItem('pulso_admin_token', token);
       onLogin(token);
     } catch {
-      setError('Token incorrecto. Revisá tu ADMIN_TOKEN.');
+      setError('Token incorrecto. Revisá el token guardado en Supabase (app_settings).');
     } finally {
       setLoading(false);
     }
@@ -303,21 +308,45 @@ export default function App() {
     setLoading(true);
     setPlanesLoading(true);
     try {
-      const [leadsData, statsData, plansData] = await Promise.all([
-        api('/leads', {}, token),
-        api('/stats', {}, token),
-        api('/plans', {}, token),
+      const s = requireSupabase();
+      const [leadsRes, statsRes, plansRes] = await Promise.all([
+        s.rpc('admin_list_leads', {
+          p_token: token,
+          p_estado: null,
+          p_page: 1,
+          p_limit: 2000,
+        }),
+        s.rpc('admin_stats', { p_token: token }),
+        s.rpc('admin_list_plans', { p_token: token }),
       ]);
-      setLeads(leadsData.leads.map(l => ({
-        ...l,
-        id: l._id,
-        createdAt: l.createdAt || l.created_at || new Date().toISOString()
-      })));
+      if (leadsRes.error) throw leadsRes.error;
+      if (statsRes.error) throw statsRes.error;
+      if (plansRes.error) throw plansRes.error;
+
+      const payload =
+        typeof leadsRes.data === 'string' ? JSON.parse(leadsRes.data) : leadsRes.data;
+      let rawLeads = payload?.leads;
+      if (typeof rawLeads === 'string') rawLeads = JSON.parse(rawLeads);
+      rawLeads = Array.isArray(rawLeads) ? rawLeads : [];
+      setLeads(
+        rawLeads.map((l) => {
+          const m = mapLeadFromRpc(l);
+          return { ...m, id: m.id };
+        })
+      );
+      let statsData = statsRes.data;
+      if (typeof statsData === 'string') statsData = JSON.parse(statsData);
       setStats(statsData);
-      setPlanes(plansData);
+
+      let plansData = plansRes.data;
+      if (typeof plansData === 'string') plansData = JSON.parse(plansData);
+      setPlanes(Array.isArray(plansData) ? plansData : []);
     } catch (err) {
       console.error(err);
-      if (err.message.includes('401') || err.message.includes('token')) {
+      if (
+        String(err.message || '').includes('token') ||
+        String(err.message || '').includes('invalid')
+      ) {
         setToken('');
         localStorage.removeItem('pulso_admin_token');
       }
@@ -482,21 +511,8 @@ export default function App() {
                 <div style={{ background: '#000', padding: '12px 16px', borderRadius: 8, border: '1px solid #1a1a1a', color: 'var(--accent)', fontWeight: 600, marginBottom: 24 }}>
                   pulsowebb@gmail.com
                 </div>
-                <button 
-                  className="btn btn-primary" 
-                  onClick={async () => {
-                    try {
-                      await api('/test-email', { method: 'POST' }, token);
-                      alert('Email de prueba enviado a pulsowebb@gmail.com');
-                    } catch (e) {
-                      alert('Error: ' + e.message);
-                    }
-                  }}
-                >
-                  ✉️ Enviar Email de Prueba
-                </button>
-                <p style={{ fontSize: '0.75rem', color: '#555', marginTop: 12 }}>
-                  Usa esto para verificar el nuevo diseño "Elite" de los correos.
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: 12 }}>
+                  Sin servidor Node no hay envío SMTP desde acá. Podés usar webhooks de Supabase o un servicio externo más adelante.
                 </p>
               </div>
 
@@ -544,7 +560,13 @@ export default function App() {
                   onClick={async () => {
                     setPlanesLoading(true);
                     try {
-                      await api('/plans', { method: 'POST', body: JSON.stringify({ plans: planes.filter(p => p.nombre.trim() !== '') }) }, token);
+                      const s = requireSupabase();
+                      const list = planes.filter((p) => p.nombre.trim() !== '');
+                      const { error } = await s.rpc('admin_replace_plans', {
+                        p_token: token,
+                        p_plans: list,
+                      });
+                      if (error) throw new Error(error.message);
                       alert('Planes actualizados con éxito.');
                       load();
                     } catch (e) {
@@ -578,7 +600,7 @@ export default function App() {
                   <input type="text" value="••••••••••••••••" readOnly style={{ background: '#000', cursor: 'default' }} />
                 </div>
                 <p style={{ fontSize: '0.75rem', color: '#555' }}>
-                  Para cambiar el token o las credenciales de Gmail, editá el archivo <code>.env</code> en el servidor.
+                  El token de admin se guarda hasheado en Supabase (<code>app_settings.admin_token_hash</code>). Actualizalo con SQL en el panel de Supabase (ver <code>supabase/supabase_only.sql</code>).
                 </p>
               </div>
             </div>

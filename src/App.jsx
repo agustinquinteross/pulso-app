@@ -5,6 +5,7 @@ import Lenis from 'lenis';
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import './index.css';
+import { getSupabase, mapPlanRow } from './lib/supabaseClient.js';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -59,8 +60,6 @@ const Reveal = ({ children, delay = 0 }) => {
   }, [delay]);
   return <div ref={ref}>{children}</div>;
 };
-const API_URL = import.meta.env.VITE_API_URL || '';
-
 /* ––– Elite Select Component ––– */
 const EliteSelect = ({ label, name, options, value, onChange, placeholder = 'Seleccionar...' }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -140,12 +139,16 @@ function ContactModal({ onClose, planDefault = '' }) {
   const [planes, setPlanes] = useState(['Básico ($350)', 'Pro ($1.800)', 'Premium ($4.000+)', 'A definir']);
 
   useEffect(() => {
-    fetch(`${API_URL}/api/plans`)
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) setPlanes(data.map(p => p.nombre));
+    const sb = getSupabase();
+    if (!sb) return;
+    sb.from('plans')
+      .select('nombre')
+      .order('orden', { ascending: true })
+      .then(({ data, error }) => {
+        if (error) throw error;
+        if (Array.isArray(data)) setPlanes(data.map((p) => p.nombre));
       })
-      .catch(err => console.error('Error fetching plans:', err));
+      .catch((err) => console.error('Error fetching plans:', err));
   }, []);
 
   const handleChange = e => setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
@@ -154,13 +157,17 @@ function ContactModal({ onClose, planDefault = '' }) {
     e.preventDefault();
     setState('sending');
     try {
-      const res = await fetch(`${API_URL}/api/contact`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+      const sb = getSupabase();
+      if (!sb) throw new Error('Falta configuración de Supabase');
+      const { error } = await sb.from('leads').insert({
+        nombre: form.nombre,
+        email: form.email,
+        telefono: form.telefono || null,
+        plan: form.plan || null,
+        mensaje: form.mensaje || null,
+        estado: 'Nuevo',
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (error) throw error;
       setState('ok');
     } catch (err) {
       console.error(err);
@@ -248,21 +255,32 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    fetch(`${API_URL}/api/plans`)
-      .then(res => res.json())
-      .then(data => {
+    const sb = getSupabase();
+    if (!sb) {
+      setPlanes([
+        { nombre: 'Básico', prefijo: 'USD', precio: '350', entrega: '2-3 semanas', desc: 'Presencia digital.', items: ['5 secciones', 'SEO'], order: 1 },
+        { nombre: 'Pro', prefijo: 'USD', precio: '1.800', entrega: '6-8 semanas', desc: 'App completa.', items: ['Admin panel', 'DB'], destacado: true, order: 2 },
+        { nombre: 'Premium', prefijo: 'Desde USD', precio: '4.000', entrega: 'A definir', desc: 'Escalable.', items: ['E-commerce', 'SLA'], order: 3 },
+      ]);
+      setPlanesLoading(false);
+      return;
+    }
+    sb.from('plans')
+      .select('*')
+      .order('orden', { ascending: true })
+      .then(({ data, error }) => {
+        if (error) throw error;
         if (Array.isArray(data) && data.length > 0) {
-          setPlanes(data);
+          setPlanes(data.map(mapPlanRow));
         } else {
-          // Fallback if empty
           setPlanes([
             { nombre: 'Básico', prefijo: 'USD', precio: '350', entrega: '2-3 semanas', desc: 'Presencia digital.', items: ['5 secciones', 'SEO'], order: 1 },
             { nombre: 'Pro', prefijo: 'USD', precio: '1.800', entrega: '6-8 semanas', desc: 'App completa.', items: ['Admin panel', 'DB'], destacado: true, order: 2 },
-            { nombre: 'Premium', prefijo: 'Desde USD', precio: '4.000', entrega: 'A definir', desc: 'Escalable.', items: ['E-commerce', 'SLA'], order: 3 }
+            { nombre: 'Premium', prefijo: 'Desde USD', precio: '4.000', entrega: 'A definir', desc: 'Escalable.', items: ['E-commerce', 'SLA'], order: 3 },
           ]);
         }
       })
-      .catch(err => console.error('Error fetching plans:', err))
+      .catch((err) => console.error('Error fetching plans:', err))
       .finally(() => setPlanesLoading(false));
   }, []);
 
