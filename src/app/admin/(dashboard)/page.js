@@ -6,6 +6,8 @@ export const metadata = {
   title: 'Admin Dashboard | Pulso',
 };
 
+export const dynamic = 'force-dynamic';
+
 export default async function DashboardPage() {
   const { leads, plans, stats } = await getDashboardData();
   
